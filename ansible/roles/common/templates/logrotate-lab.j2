@@ -1,5 +1,7 @@
 # {{ ansible_managed }}
 {{ common_logrotate_paths | join(' ') }} {
+    # /var/log/lab is group-writable for labadmin; logrotate needs su for that
+    su root {{ common_admin_group }}
     weekly
     rotate 8
     compress
