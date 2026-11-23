@@ -11,14 +11,17 @@
 
 - name: Create socket and log directories
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ item.path }}"
     state: directory
     owner: postgres
     group: postgres
-    mode: "0755"
+    mode: "{{ item.mode }}"
   loop:
-    - "{{ postgresql_socket_dir }}"
-    - /var/log/lab/postgresql
+    - {path: "{{ postgresql_socket_dir }}", mode: "0755"}
+    # same mode as scripts/svc.sh uses, so a restart does not undo it
+    - {path: /var/log/lab/postgresql, mode: "0750"}
+  loop_control:
+    label: "{{ item.path }}"
 
 # initdb directly instead of postgresql-setup, which needs systemd
 - name: Initialise database cluster
