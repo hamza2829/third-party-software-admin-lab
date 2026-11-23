@@ -1,0 +1,10 @@
+---
+# Lab-only credentials. Nothing secret lives in this repository: override
+# with environment variables (or ansible-vault in a real setup).
+lab_pg_app_password: "{{ lookup('ansible.builtin.env', 'LAB_PG_APP_PASSWORD') | default('lab-only-pg-password', true) }}"
+lab_rmq_admin_password: "{{ lookup('ansible.builtin.env', 'LAB_RMQ_ADMIN_PASSWORD') | default('lab-only-rmq-admin', true) }}"
+lab_rmq_app_password: "{{ lookup('ansible.builtin.env', 'LAB_RMQ_APP_PASSWORD') | default('lab-only-rmq-app', true) }}"
+
+# true when systemd is PID 1 (VM/host); false in the CI container
+lab_use_systemd: "{{ ansible_facts['service_mgr'] == 'systemd' }}"
+lab_svc: /usr/local/sbin/labsvc

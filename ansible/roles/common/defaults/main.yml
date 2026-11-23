@@ -1,0 +1,54 @@
+---
+common_packages:
+  - logrotate
+  - tar
+  - gzip
+  - procps-ng
+  - iproute
+  - findutils
+  - hostname
+  - util-linux
+  - which
+
+common_admin_group: labadmin
+common_users:
+  - name: labops
+    comment: Lab operations (third-party software admin)
+    shell: /bin/bash
+
+common_directories:
+  - {path: /opt/lab, owner: root, group: root, mode: "0755"}
+  - {path: /opt/lab/bin, owner: root, group: root, mode: "0755"}
+  - {path: /opt/lab/bin/lib, owner: root, group: root, mode: "0755"}
+  - {path: /etc/lab, owner: root, group: "{{ common_admin_group }}", mode: "0750"}
+  - {path: /var/log/lab, owner: root, group: "{{ common_admin_group }}", mode: "0775"}
+  - {path: /var/backups/lab, owner: root, group: "{{ common_admin_group }}", mode: "0750"}
+  - {path: /var/lib/lab, owner: root, group: root, mode: "0755"}
+  - {path: /var/lib/lab/snapshots, owner: root, group: root, mode: "0700"}
+
+common_scripts:
+  - svc.sh
+  - preflight.sh
+  - healthcheck.sh
+  - backup_restore.sh
+  - upgrade.sh
+
+common_logrotate_paths:
+  - /var/log/lab/*.log
+  - /var/log/lab/postgresql/*.log
+
+# Firewall rules are written as firewalld config only (not applied: the CI
+# container has no firewalld). On a real host: firewall-cmd --reload.
+common_firewall_zone: lab-internal
+common_firewall_sources:
+  - 10.0.0.0/8
+  - 192.168.0.0/16
+common_firewall_services:
+  - name: lab-postgresql
+    description: PostgreSQL for the lab applications
+    ports: [{port: 5432, protocol: tcp}]
+  - name: lab-rabbitmq
+    description: RabbitMQ AMQP and management UI
+    ports:
+      - {port: 5672, protocol: tcp}
+      - {port: 15672, protocol: tcp}

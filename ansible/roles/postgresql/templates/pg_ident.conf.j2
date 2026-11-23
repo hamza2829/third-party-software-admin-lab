@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# MAPNAME     SYSTEM-USERNAME   PG-USERNAME
+{% for u in postgresql_admin_os_users %}
+lab_admin     {{ u }}             postgres
+{% endfor %}

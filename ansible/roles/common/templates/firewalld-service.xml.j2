@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- {{ ansible_managed }} -->
+<service>
+  <short>{{ item.name }}</short>
+  <description>{{ item.description }}</description>
+{% for p in item.ports %}
+  <port protocol="{{ p.protocol }}" port="{{ p.port }}"/>
+{% endfor %}
+</service>

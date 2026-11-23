@@ -1,0 +1,56 @@
+---
+# Vendor repositories from Team RabbitMQ (packages for EL9 + matching Erlang).
+rabbitmq_signing_keys:
+  - https://github.com/rabbitmq/signing-keys/releases/download/3.0/rabbitmq-release-signing-key.asc
+  - https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key
+  - https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key
+rabbitmq_repos:
+  - name: modern-erlang
+    description: Erlang/OTP for RabbitMQ (EL9)
+    baseurl:
+      - https://yum1.rabbitmq.com/erlang/el/9/$basearch
+      - https://yum2.rabbitmq.com/erlang/el/9/$basearch
+  - name: modern-erlang-noarch
+    description: Erlang/OTP for RabbitMQ (EL9, noarch)
+    baseurl:
+      - https://yum1.rabbitmq.com/erlang/el/9/noarch
+      - https://yum2.rabbitmq.com/erlang/el/9/noarch
+  - name: rabbitmq-el9
+    description: RabbitMQ server (EL9)
+    baseurl:
+      - https://yum2.rabbitmq.com/rabbitmq/el/9/$basearch
+      - https://yum1.rabbitmq.com/rabbitmq/el/9/$basearch
+  - name: rabbitmq-el9-noarch
+    description: RabbitMQ server (EL9, noarch)
+    baseurl:
+      - https://yum2.rabbitmq.com/rabbitmq/el/9/noarch
+      - https://yum1.rabbitmq.com/rabbitmq/el/9/noarch
+
+# Empty = latest. Set e.g. "4.1.4" to install a specific (older) version;
+# it is only used for the first install, upgrades go through scripts/upgrade.sh.
+rabbitmq_version: ""
+
+rabbitmq_nodename: rabbit@localhost
+rabbitmq_amqp_port: 5672
+rabbitmq_management_port: 15672
+rabbitmq_plugins:
+  - rabbitmq_management
+rabbitmq_disk_free_limit: 1GB
+rabbitmq_memory_high_watermark: 0.4
+
+rabbitmq_vhost: lab
+rabbitmq_admin_user: lab_admin
+rabbitmq_admin_password: "{{ lab_rmq_admin_password }}"
+rabbitmq_app_user: app_publisher
+rabbitmq_app_password: "{{ lab_rmq_app_password }}"
+
+rabbitmq_queues:
+  - name: orders.incoming
+    dead_letter_exchange: ""
+    dead_letter_routing_key: orders.dlq
+  - name: orders.dlq
+  - name: notifications.email
+    message_ttl: 86400000
+    max_length: 100000
+
+rabbitmq_backlog_warn: 1000

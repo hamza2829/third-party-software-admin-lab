@@ -1,0 +1,106 @@
+# Inventory of third-party products run by the IT department.
+# Read by tools/maintenance_planner.py -> docs/maintenance-plan.md
+# Owners, mail addresses and vendors below are fictional examples.
+
+planning:
+  timezone: Europe/Berlin
+  lead_time_days: 10          # departments are informed at least this many days before
+  max_changes_per_day: 1      # one change per maintenance window, easier rollback
+  blackouts:                  # no maintenance at all
+    - from: 2026-12-21
+      to: 2027-01-03
+      reason: Year-end change freeze
+    - from: 2027-01-15
+      to: 2027-01-15
+      reason: Inventory day (warehouse)
+
+departments:
+  Finance:
+    contact: finance-it@example.org
+    month_end_freeze_days: 3  # last 3 days of each month: closing, no changes
+  Logistics:
+    contact: logistics-lead@example.org
+  Customer Service:
+    contact: cs-teamleads@example.org
+  Human Resources:
+    contact: hr-office@example.org
+  IT Operations:
+    contact: it-ops@example.org
+
+products:
+  - name: PostgreSQL
+    package: postgresql-server
+    vendor: PostgreSQL Global Development Group (AlmaLinux AppStream)
+    version: "16.4"
+    target_version: "16.8"
+    owner: {name: Dana Weber, email: dana.weber@example.org}
+    departments: [Finance, Logistics, Customer Service]
+    criticality: high
+    window: {weekday: saturday, start: "06:00", duration_minutes: 120}
+    depends_on: []
+
+  - name: RabbitMQ
+    package: rabbitmq-server
+    vendor: Broadcom / Team RabbitMQ (vendor repository)
+    version: "4.1.4"
+    target_version: "4.2.1"
+    owner: {name: Jonas Keller, email: jonas.keller@example.org}
+    departments: [Logistics, Customer Service]
+    criticality: high
+    window: {weekday: saturday, start: "08:00", duration_minutes: 90}
+    depends_on: [Erlang/OTP]
+
+  - name: Erlang/OTP
+    package: erlang
+    vendor: Team RabbitMQ (modern-erlang repository)
+    version: "27.3.4"
+    target_version: "27.3.4.3"
+    owner: {name: Jonas Keller, email: jonas.keller@example.org}
+    departments: [Logistics, Customer Service]
+    criticality: medium
+    window: {weekday: thursday, start: "19:00", duration_minutes: 60}
+    depends_on: []
+
+  - name: OrderDesk ERP connector
+    package: orderdesk-connector
+    vendor: OrderDesk GmbH
+    version: "5.2.0"
+    target_version: "6.0.1"
+    owner: {name: Mira Sato, email: mira.sato@example.org}
+    departments: [Finance, Logistics]
+    criticality: high
+    window: {weekday: saturday, start: "07:00", duration_minutes: 180}
+    depends_on: [PostgreSQL, RabbitMQ]
+
+  - name: HelpPoint ticket system
+    package: helppoint-server
+    vendor: HelpPoint Software Ltd.
+    version: "3.8.2"
+    target_version: "3.8.5"
+    owner: {name: Lars Brandt, email: lars.brandt@example.org}
+    departments: [Customer Service, IT Operations]
+    criticality: medium
+    window: {weekday: wednesday, start: "18:30", duration_minutes: 60}
+    depends_on: [PostgreSQL]
+
+  - name: TimeTrack HR
+    package: timetrack-hr
+    vendor: Zeitwerk Solutions AG
+    version: "2024.4"
+    target_version: "2025.1"
+    owner: {name: Ana Petrovic, email: ana.petrovic@example.org}
+    departments: [Human Resources]
+    criticality: low
+    window: {weekday: tuesday, start: "17:30", duration_minutes: 45}
+    depends_on: []
+
+  - name: Grafana
+    package: grafana
+    vendor: Grafana Labs (vendor repository)
+    version: "11.2.0"
+    target_version: "11.2.3"
+    owner: {name: Lars Brandt, email: lars.brandt@example.org}
+    departments: [IT Operations]
+    criticality: low
+    window: {weekday: monday, start: "16:00", duration_minutes: 30}
+    depends_on: []

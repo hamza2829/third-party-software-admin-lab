@@ -1,0 +1,98 @@
+---
+- name: Install base packages
+  ansible.builtin.dnf:
+    name: "{{ common_packages }}"
+    state: present
+    install_weak_deps: false
+
+- name: Create admin group
+  ansible.builtin.group:
+    name: "{{ common_admin_group }}"
+    system: true
+    state: present
+
+- name: Create operator users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    comment: "{{ item.comment }}"
+    shell: "{{ item.shell }}"
+    groups: ["{{ common_admin_group }}"]
+    append: true
+    system: true
+    create_home: true
+  loop: "{{ common_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create lab directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ common_directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install admin scripts to /opt/lab/bin
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/{{ item }}"
+    dest: "/opt/lab/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ common_scripts }}"
+
+- name: Install shared script library
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../scripts/lib/common.sh"
+    dest: /opt/lab/bin/lib/common.sh
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Link service helper to /usr/local/sbin/labsvc
+  ansible.builtin.file:
+    src: /opt/lab/bin/svc.sh
+    dest: "{{ lab_svc }}"
+    state: link
+
+- name: Configure logrotate for lab logs
+  ansible.builtin.template:
+    src: logrotate-lab.j2
+    dest: /etc/logrotate.d/lab
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create firewalld config directories (config only, firewalld not required)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - /etc/firewalld
+    - /etc/firewalld/services
+    - /etc/firewalld/zones
+
+- name: Write firewalld service definitions
+  ansible.builtin.template:
+    src: firewalld-service.xml.j2
+    dest: "/etc/firewalld/services/{{ item.name }}.xml"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ common_firewall_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write firewalld zone for internal clients
+  ansible.builtin.template:
+    src: firewalld-zone.xml.j2
+    dest: "/etc/firewalld/zones/{{ common_firewall_zone }}.xml"
+    owner: root
+    group: root
+    mode: "0644"

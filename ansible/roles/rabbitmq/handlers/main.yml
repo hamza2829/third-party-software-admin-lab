@@ -1,0 +1,4 @@
+---
+- name: Restart rabbitmq
+  ansible.builtin.command: "{{ lab_svc }} restart rabbitmq"
+  changed_when: true

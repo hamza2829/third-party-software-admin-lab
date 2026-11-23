@@ -1,0 +1,180 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: lint + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install tools
+        run: pip install -r requirements-dev.txt
+      - name: shellcheck
+        run: shellcheck -x scripts/*.sh scripts/lib/*.sh
+      - name: yamllint
+        run: yamllint .
+      - name: ansible-lint (production profile)
+        run: ansible-lint ansible/
+      - name: ansible syntax check
+        working-directory: ansible
+        run: ansible-playbook --syntax-check site.yml
+      - name: pytest
+        run: python -m pytest -v
+      - name: maintenance plan is up to date
+        run: |
+          python tools/maintenance_planner.py --start 2026-12-01 --output docs/maintenance-plan.md
+          git diff --exit-code docs/maintenance-plan.md
+
+  lab:
+    name: lab on ${{ matrix.image }}
+    needs: static
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["almalinux:9", "rockylinux/rockylinux:9"]
+    container:
+      image: ${{ matrix.image }}
+    env:
+      R: /tmp/lab-results
+      PATH: /opt/lab/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install git for checkout
+        run: dnf -y -q install git-core
+      - uses: actions/checkout@v4
+
+      - name: Preflight before install (ports must be free)
+        run: |
+          mkdir -p "$R"
+          scripts/preflight.sh | tee "$R/01-preflight.txt"
+
+      - name: Bootstrap Python 3.11 + Ansible
+        run: scripts/bootstrap.sh 2>&1 | tee "$R/02-bootstrap.txt"
+
+      - name: Choose an older RabbitMQ release so the upgrade step has something to do
+        run: |
+          scripts/run_playbook.sh --log "$R/00-repo-setup.log" -- --tags rabbitmq_repo
+          versions="$(dnf -q repoquery --showduplicates --qf '%{version}' rabbitmq-server | sort -uV)"
+          latest="$(tail -n 1 <<< "$versions")"
+          previous="$(grep "^${latest%.*}\." <<< "$versions" | grep -vx "$latest" | tail -n 1)"
+          [ -n "$previous" ] || previous="$(tail -n 2 <<< "$versions" | head -n 1)"
+          echo "latest=$latest previous=$previous" | tee "$R/03-rabbitmq-versions.txt"
+          echo "RMQ_INITIAL=$previous" >> "$GITHUB_ENV"
+          echo "RMQ_LATEST=$latest" >> "$GITHUB_ENV"
+
+      - name: Ansible run 1 (install + configure)
+        run: scripts/run_playbook.sh --log "$R/10-ansible-run1.log" -- -e rabbitmq_version="$RMQ_INITIAL"
+
+      - name: Ansible run 2 (must report zero changes)
+        run: scripts/run_playbook.sh --assert-idempotent --log "$R/11-ansible-run2.log" -- -e rabbitmq_version="$RMQ_INITIAL"
+
+      - name: Healthcheck after install
+        run: scripts/healthcheck.sh | tee "$R/20-healthcheck.txt"
+
+      - name: Preflight after install (ports must be listening)
+        run: scripts/preflight.sh --ports "5432 5672 15672 25672 4369" --ports-mode listening | tee "$R/21-preflight-listening.txt"
+
+      - name: Port-in-use detection (preflight must fail now)
+        run: |
+          if scripts/preflight.sh --ports "5432 5672" > "$R/22-port-in-use.txt"; then
+            echo "preflight did not detect the busy ports"; exit 1
+          fi
+          cat "$R/22-port-in-use.txt"
+
+      - name: Wrong credentials are detected
+        run: |
+          if LAB_PG_APP_PASSWORD=wrong scripts/healthcheck.sh --product postgresql > "$R/23-wrong-credentials.txt"; then
+            echo "wrong password was not detected"; exit 1
+          fi
+          cat "$R/23-wrong-credentials.txt"
+
+      - name: Config files written by the common role
+        run: |
+          {
+            logrotate -d /etc/logrotate.d/lab 2>&1 | tail -n 5
+            python3 -c 'import sys, xml.dom.minidom as m; [m.parse(f) for f in sys.argv[1:]]; print("firewalld xml ok:", *sys.argv[1:])' \
+              /etc/firewalld/services/*.xml /etc/firewalld/zones/*.xml
+            id labops
+            ls -ld /opt/lab/bin /etc/lab /var/log/lab /var/backups/lab
+          } | tee "$R/24-common-role.txt"
+
+      - name: Seed demo data
+        run: |
+          set -a; . /etc/lab/postgresql.env; set +a
+          PGPASSWORD="$LAB_PG_APP_PASSWORD" psql -X -h 127.0.0.1 -U app_user -d app_db -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE IF NOT EXISTS orders (id bigserial PRIMARY KEY, customer text NOT NULL, amount numeric(10,2), created timestamptz DEFAULT now());
+          INSERT INTO orders (customer, amount) SELECT 'customer-' || g, g * 1.5 FROM generate_series(1, 2500) g;
+          CREATE TABLE IF NOT EXISTS customers AS SELECT DISTINCT customer AS name FROM orders;
+          SQL
+
+      - name: Backup, verify and restore PostgreSQL
+        run: |
+          {
+            scripts/backup_restore.sh backup
+            scripts/backup_restore.sh list
+            scripts/backup_restore.sh verify
+            scripts/backup_restore.sh restore "$(ls /var/backups/lab/postgresql/*.dump | tail -n 1)" --target-db app_db_copy
+            psql -X -At -U postgres -d app_db_copy -c 'select count(*) from orders'
+          } 2>&1 | tee "$R/30-backup-restore.txt"
+
+      - name: Upgrade dry-run
+        run: scripts/upgrade.sh --dry-run rabbitmq | tee "$R/40-upgrade-dry-run.txt"
+
+      - name: Upgrade RabbitMQ to the latest release
+        run: scripts/upgrade.sh rabbitmq 2>&1 | tee "$R/41-upgrade-rabbitmq.txt"
+
+      - name: Upgrade PostgreSQL (package step + healthcheck)
+        run: scripts/upgrade.sh postgresql 2>&1 | tee "$R/42-upgrade-postgresql.txt"
+
+      - name: Failed upgrade -> config rollback (broken config simulated, exit 3 expected)
+        run: |
+          set +e
+          scripts/upgrade.sh --simulate-broken-config postgresql > "$R/43-upgrade-rollback.txt" 2>&1
+          rc=$?
+          cat "$R/43-upgrade-rollback.txt"
+          echo "upgrade.sh exit code: $rc"
+          [ "$rc" = 3 ]
+
+      - name: Final healthcheck
+        run: scripts/healthcheck.sh | tee "$R/50-healthcheck-final.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Lab results on ${{ matrix.image }}"
+            echo '```'
+            grep PRETTY_NAME /etc/os-release || true
+            rpm -q postgresql-server rabbitmq-server erlang python3.11 2>/dev/null || true
+            for f in "$R"/1*-ansible-run*.log; do [ -f "$f" ] && echo "$(basename "$f"): $(grep -A1 'PLAY RECAP' "$f" | tail -n 1 | tr -s ' ')"; done
+            grep -h -E '^(healthcheck|preflight):|^RESULT:|verify ok|rabbitmq versions|latest=' "$R"/*.txt 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect service logs
+        if: always()
+        run: |
+          cp -r /var/log/rabbitmq "$R/rabbitmq-logs" 2>/dev/null || true
+          cp -r /var/lib/pgsql/data/log "$R/postgresql-logs" 2>/dev/null || true
+          cp /var/log/lab/*.log /var/log/lab/postgresql/*.log "$R/" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-results-${{ strategy.job-index }}
+          path: /tmp/lab-results

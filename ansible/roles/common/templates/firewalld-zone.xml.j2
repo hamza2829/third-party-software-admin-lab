@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- {{ ansible_managed }} -->
+<zone target="default">
+  <short>{{ common_firewall_zone }}</short>
+  <description>Internal clients that may reach the lab services. Everything else stays in the default zone.</description>
+{% for src in common_firewall_sources %}
+  <source address="{{ src }}"/>
+{% endfor %}
+  <service name="ssh"/>
+{% for svc in common_firewall_services %}
+  <service name="{{ svc.name }}"/>
+{% endfor %}
+</zone>

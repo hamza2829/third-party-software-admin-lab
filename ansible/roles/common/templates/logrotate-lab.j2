@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+{{ common_logrotate_paths | join(' ') }} {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    dateext
+}

@@ -1,0 +1,144 @@
+---
+- name: Import RabbitMQ and Erlang signing keys
+  ansible.builtin.rpm_key:
+    key: "{{ item }}"
+    state: present
+  loop: "{{ rabbitmq_signing_keys }}"
+  tags: [rabbitmq_repo]
+
+- name: Configure vendor repositories
+  ansible.builtin.yum_repository:
+    name: "{{ item.name }}"
+    description: "{{ item.description }}"
+    baseurl: "{{ item.baseurl }}"
+    gpgcheck: true
+    repo_gpgcheck: false
+    gpgkey: "{{ rabbitmq_signing_keys }}"
+    sslverify: true
+    metadata_expire: "300"
+    enabled: true
+  loop: "{{ rabbitmq_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [rabbitmq_repo]
+
+- name: Gather installed packages
+  ansible.builtin.package_facts:
+    manager: rpm
+
+- name: Install RabbitMQ, Erlang comes as dependency - {{ rabbitmq_version | default('latest', true) }}
+  ansible.builtin.dnf:
+    name:
+      - socat
+      - logrotate
+      - "rabbitmq-server{{ ('-' ~ rabbitmq_version) if rabbitmq_version else '' }}"
+    state: present
+  when: "'rabbitmq-server' not in ansible_facts.packages"
+
+- name: Write rabbitmq-env.conf
+  ansible.builtin.template:
+    src: rabbitmq-env.conf.j2
+    dest: /etc/rabbitmq/rabbitmq-env.conf
+    owner: root
+    group: rabbitmq
+    mode: "0640"
+  notify: Restart rabbitmq
+
+- name: Write rabbitmq.conf
+  ansible.builtin.template:
+    src: rabbitmq.conf.j2
+    dest: /etc/rabbitmq/rabbitmq.conf
+    owner: root
+    group: rabbitmq
+    mode: "0640"
+  notify: Restart rabbitmq
+
+- name: Enable plugins (management)
+  ansible.builtin.template:
+    src: enabled_plugins.j2
+    dest: /etc/rabbitmq/enabled_plugins
+    owner: rabbitmq
+    group: rabbitmq
+    mode: "0640"
+  notify: Restart rabbitmq
+
+- name: Apply config changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable rabbitmq-server unit (systemd hosts only)
+  ansible.builtin.systemd_service:
+    name: rabbitmq-server
+    enabled: true
+  when: lab_use_systemd | bool
+
+- name: Ensure rabbitmq is running
+  ansible.builtin.command: "{{ lab_svc }} ensure-started rabbitmq"
+  register: rabbitmq_start
+  changed_when: "'STATE=started' in rabbitmq_start.stdout"
+
+- name: Create vhost
+  community.rabbitmq.rabbitmq_vhost:
+    name: "{{ rabbitmq_vhost }}"
+    node: "{{ rabbitmq_nodename }}"
+    state: present
+
+- name: Create admin user
+  community.rabbitmq.rabbitmq_user:
+    user: "{{ rabbitmq_admin_user }}"
+    password: "{{ rabbitmq_admin_password }}"
+    tags: administrator
+    update_password: on_create
+    node: "{{ rabbitmq_nodename }}"
+    permissions:
+      - vhost: "{{ rabbitmq_vhost }}"
+        configure_priv: ".*"
+        read_priv: ".*"
+        write_priv: ".*"
+    state: present
+  no_log: true
+
+- name: Create application user (publish/consume only on lab queues)
+  community.rabbitmq.rabbitmq_user:
+    user: "{{ rabbitmq_app_user }}"
+    password: "{{ rabbitmq_app_password }}"
+    update_password: on_create
+    node: "{{ rabbitmq_nodename }}"
+    permissions:
+      - vhost: "{{ rabbitmq_vhost }}"
+        configure_priv: "^$"
+        read_priv: "^(orders|notifications)\\..*"
+        write_priv: "^(amq\\.default|orders\\..*|notifications\\..*)$"
+    state: present
+  no_log: true
+
+- name: Remove default guest user
+  community.rabbitmq.rabbitmq_user:
+    user: guest
+    node: "{{ rabbitmq_nodename }}"
+    state: absent
+
+- name: Create queues
+  community.rabbitmq.rabbitmq_queue:
+    name: "{{ item.name }}"
+    vhost: "{{ rabbitmq_vhost }}"
+    durable: true
+    dead_letter_exchange: "{{ item.dead_letter_exchange | default(omit) }}"
+    dead_letter_routing_key: "{{ item.dead_letter_routing_key | default(omit) }}"
+    message_ttl: "{{ item.message_ttl | default(omit) }}"
+    max_length: "{{ item.max_length | default(omit) }}"
+    login_user: "{{ rabbitmq_admin_user }}"
+    login_password: "{{ rabbitmq_admin_password }}"
+    login_host: localhost
+    login_port: "{{ rabbitmq_management_port | string }}"
+    state: present
+  loop: "{{ rabbitmq_queues }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write connection settings for the admin scripts
+  ansible.builtin.template:
+    src: rabbitmq.env.j2
+    dest: /etc/lab/rabbitmq.env
+    owner: root
+    group: root
+    mode: "0600"

@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+listen_addresses = '{{ postgresql_listen_addresses }}'
+port = {{ postgresql_port }}
+unix_socket_directories = '{{ postgresql_socket_dir }}'
+{% for key, value in postgresql_settings.items() %}
+{{ key }} = {{ value }}
+{% endfor %}

@@ -1,0 +1,32 @@
+---
+# AppStream module stream (EL9 ships 13 as default, 15 and 16 as streams)
+postgresql_stream: "16"
+postgresql_packages:
+  - postgresql-server
+  - postgresql-contrib
+postgresql_data_dir: /var/lib/pgsql/data
+postgresql_socket_dir: /run/postgresql
+postgresql_port: 5432
+postgresql_listen_addresses: localhost
+
+postgresql_db: app_db
+postgresql_user: app_user
+postgresql_password: "{{ lab_pg_app_password }}"
+
+# extra settings rendered into conf.d/10-lab.conf
+postgresql_settings:
+  max_connections: 50
+  shared_buffers: 128MB
+  password_encryption: scram-sha-256
+  log_line_prefix: "'%m [%p] %q%u@%d '"
+  log_connections: "on"
+  log_min_duration_statement: 1000
+
+# clients allowed over TCP (scram-sha-256); localhost is always allowed
+postgresql_hba_networks:
+  - 127.0.0.1/32
+  - ::1/128
+# OS users allowed to connect as the postgres role via peer authentication
+postgresql_admin_os_users:
+  - root
+  - postgres

@@ -1,0 +1,11 @@
+---
+- name: Third-party software admin lab
+  hosts: lab
+  gather_facts: true
+  roles:
+    - role: common
+      tags: [common]
+    - role: postgresql
+      tags: [postgresql]
+    - role: rabbitmq
+      tags: [rabbitmq]

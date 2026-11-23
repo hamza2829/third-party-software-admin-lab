@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# TYPE  DATABASE                USER                    ADDRESS          METHOD
+# administration: listed OS users may log in as postgres via the local socket
+local   all                     postgres                                 peer map=lab_admin
+# application: password (SCRAM) only, own database only
+local   {{ postgresql_db }}     {{ postgresql_user }}                    scram-sha-256
+{% for net in postgresql_hba_networks %}
+host    {{ postgresql_db }}     {{ postgresql_user }}     {{ net }}  scram-sha-256
+{% endfor %}
+# everything else is rejected explicitly
+local   all                     all                                      reject
+host    all                     all                     0.0.0.0/0        reject
+host    all                     all                     ::/0             reject
