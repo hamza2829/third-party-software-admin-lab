@@ -8,7 +8,7 @@
 # Any failed/unreachable host exits 1.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ASSERT=0; LOG=""; CHECK_ONLY=""
 while [ $# -gt 0 ]; do
