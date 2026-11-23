@@ -19,7 +19,32 @@ How third-party products are **installed, administered and updated** on a RedHat
 ## Results of the CI run
 
 <!-- RESULTS:START -->
-_Pending: filled in from the first green CI run._
+From the green CI run [45177855841](https://github.com/hamza2829/third-party-software-admin-lab/actions/runs/45177855841)
+(23 Nov 2026), taken from the job logs and the uploaded `lab-results` artifacts.
+
+Static job: shellcheck, yamllint, ansible-lint (production profile), syntax check all passed; pytest `91 passed`;
+maintenance plan unchanged.
+
+| | `almalinux:9` | `rockylinux/rockylinux:9` |
+|---|---|---|
+| OS | AlmaLinux 9.9 (Chartreuse Bobcat) | Rocky Linux 9.9 (Blue Onyx) |
+| PostgreSQL | 16.15 (`postgresql-server-16.15-1.module_el9.8.0+311+c39b793b`) | 16.15 (`postgresql-server-16.15-1.module+el9.8.0+40320+f6f9ed3c`) |
+| RabbitMQ installed first | 4.4.0 (`rabbitmq-server-4.4.0-1.el8`) | 4.4.0 (`rabbitmq-server-4.4.0-1.el8`) |
+| Erlang/OTP (from the RabbitMQ startup log) | 29.1.2 | 29.1.2 |
+| Ansible run 1 | `ok=42 changed=36 unreachable=0 failed=0 skipped=2` | `ok=42 changed=36 unreachable=0 failed=0 skipped=2` |
+| Ansible run 2 | `ok=38 changed=0 unreachable=0 failed=0 skipped=3` | `ok=38 changed=0 unreachable=0 failed=0 skipped=3` |
+| Healthcheck after install | 13 checks, 0 failed, 0 warnings | 13 checks, 0 failed, 0 warnings |
+| Preflight, ports busy (expected to fail) | 7 checks, 2 failed | 7 checks, 2 failed |
+| Wrong password | detected (`password authentication failed`) | detected (`password authentication failed`) |
+| Backup verify | `verify ok`: restores and matches row counts (orders=2500, customers=2500) | `verify ok`: restores and matches row counts (orders=2500, customers=2500) |
+| RabbitMQ upgrade | 4.4.0 → 4.4.1, healthcheck 10 checks, 0 failed | 4.4.0 → 4.4.1, healthcheck 10 checks, 0 failed |
+| PostgreSQL upgrade | already latest (16.15), healthy | already latest (16.15), healthy |
+| Broken config → rollback | config restored, healthy again, `upgrade.sh exit code: 3` | config restored, healthy again, `upgrade.sh exit code: 3` |
+| Final healthcheck | 13 checks, 0 failed, 0 warnings | 13 checks, 0 failed, 0 warnings |
+
+Fixes needed for the first real AlmaLinux/Rocky run: the `labsvc` symlink did not find `lib/common.sh`
+(scripts now resolve symlinks), the PostgreSQL log directory mode differed between the role and `svc.sh`
+(second run reported `changed=1`), and logrotate refused the group-writable `/var/log/lab` without a `su` line.
 <!-- RESULTS:END -->
 
 ## Layout
